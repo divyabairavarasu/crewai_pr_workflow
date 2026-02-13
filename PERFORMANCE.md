@@ -216,7 +216,7 @@ After editing `.env`:
 ```bash
 # 1. Restart Ollama (if using local models)
 killall ollama
-export OLLAMA_MODELS=/Volumes/Zuk/ollama/models
+# export OLLAMA_MODELS=/path/to/your/ollama/models  # optional: set custom model path
 ollama serve &
 
 # 2. Run workflow
