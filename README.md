@@ -52,8 +52,10 @@ ollama pull qwen2.5-coder:3b
 
    Or run with a GitHub PR URL:
    ```bash
-   python -m pr_workflow.main https://github.com/divyabairavarasu/gold-spiritual-dasboard/pull/2 --comment
+   python -m pr_workflow.main <replace with PR link> --comment
    ```
+  
+
 
 ## Notes
 - This is **language-agnostic** and relies on diff metadata, not language-specific parsing.
