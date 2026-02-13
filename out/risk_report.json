@@ -1,0 +1,122 @@
+{
+  "files": [
+    {
+      "path": "app/blueprints/api/market_routes.py",
+      "loc": 72,
+      "is_test": false,
+      "risk_score": 1,
+      "risk_keywords": [
+        "api"
+      ]
+    },
+    {
+      "path": "app/config.py",
+      "loc": 13,
+      "is_test": false,
+      "risk_score": 1,
+      "risk_keywords": [
+        "config"
+      ]
+    },
+    {
+      "path": "app/integrations/free_gold_api_client.py",
+      "loc": 2,
+      "is_test": false,
+      "risk_score": 1,
+      "risk_keywords": [
+        "api"
+      ]
+    },
+    {
+      "path": "PULL_REQUEST.md",
+      "loc": 399,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/services/market_prediction_service.py",
+      "loc": 213,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/services/gold_service.py",
+      "loc": 206,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/static/js/etf_forecast.js",
+      "loc": 158,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/integrations/polygon_client.py",
+      "loc": 103,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/integrations/twelvedata_client.py",
+      "loc": 89,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/static/css/dashboard.css",
+      "loc": 42,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/templates/dashboard.html",
+      "loc": 28,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "README.md",
+      "loc": 25,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "QUICKSTART.md",
+      "loc": 10,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "STARTUP_GUIDE.md",
+      "loc": 4,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/__init__.py",
+      "loc": 2,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    },
+    {
+      "path": "app/templates/about.html",
+      "loc": 2,
+      "is_test": false,
+      "risk_score": 0,
+      "risk_keywords": []
+    }
+  ]
+}

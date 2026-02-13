@@ -1,0 +1,16 @@
+{
+  "id": "PR-123",
+  "title": "Optimize caching and add auth checks",
+  "description": "Sample PR context for testing the workflow.",
+  "diff_summary": "Updates cache layer and auth middleware. Adds tests.",
+  "test_summary": "Unit tests added for cache and auth flows.",
+  "ci_summary": "All checks passing.",
+  "files": [
+    {"path": "src/cache/lru_cache.py", "added": 180, "removed": 22},
+    {"path": "src/auth/middleware.py", "added": 90, "removed": 10},
+    {"path": "src/api/handlers.py", "added": 350, "removed": 120},
+    {"path": "tests/test_cache.py", "added": 140, "removed": 0},
+    {"path": "tests/test_auth.py", "added": 120, "removed": 0},
+    {"path": "README.md", "added": 30, "removed": 5}
+  ]
+}
