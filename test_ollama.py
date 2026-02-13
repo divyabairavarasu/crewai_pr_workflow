@@ -60,7 +60,7 @@ def test_ollama_connection():
         print(f"\n✗ Error: {e}")
         print("\nTroubleshooting:")
         print("1. Make sure Ollama is running:")
-        print("   OLLAMA_MODELS=/Volumes/Zuk/ollama/models ollama serve &")
+        print("   ollama serve &")
         print("2. Verify the model is available:")
         print("   curl http://localhost:11434/api/tags")
         print("3. Check that the model name matches exactly")
