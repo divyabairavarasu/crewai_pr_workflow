@@ -1,48 +1,61 @@
+"""
+Main workflow orchestration for CrewAI PR Review.
+"""
+from __future__ import annotations
+
 import json
 import os
 import subprocess
 import sys
-from typing import Dict
-from dotenv import load_dotenv
+from typing import Optional
+
 from crewai import Crew, Process
+from dotenv import load_dotenv
 
 from .agents import build_agents
 from .github import build_pr_context_from_url
+from .performance_config import PerformanceConfig
 from .settings import load_settings
-from .triage import triage_batches, build_risk_report
 from .tasks import (
-    triage_task,
-    perf_review_task,
+    coverage_fix_task,
+    coverage_review_task,
     perf_fix_task,
+    perf_review_task,
     security_review_task,
     senior_dev_fix_task,
-    coverage_review_task,
-    coverage_fix_task,
+    triage_task,
 )
+from .triage import build_risk_report, triage_batches
 
 
-def read_json(path: str):
+def read_json(path: str) -> dict:
+    """Read a JSON file."""
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def write_text(path: str, content: str):
+    """Write text to a file."""
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
 
 def ensure_dir(path: str):
+    """Ensure a directory exists."""
     os.makedirs(path, exist_ok=True)
 
 
 def task_output(task) -> str:
+    """Extract output from a task."""
     if hasattr(task, "output") and task.output is not None:
         if hasattr(task.output, "raw"):
             return task.output.raw
         return str(task.output)
     return ""
 
+
 def run_command(cmd: str) -> str:
+    """Run a shell command and return output."""
     if not cmd:
         return ""
     try:
@@ -60,6 +73,7 @@ def run_command(cmd: str) -> str:
 
 
 def _is_test_file(path: str) -> bool:
+    """Check if a path is a test file."""
     if not path:
         return False
     norm = path.lower()
@@ -78,6 +92,7 @@ def _is_test_file(path: str) -> bool:
 
 
 def _is_doc_file(path: str) -> bool:
+    """Check if a path is a documentation file."""
     if not path:
         return False
     norm = path.lower()
@@ -85,6 +100,7 @@ def _is_doc_file(path: str) -> bool:
 
 
 def _truncate_patch(patch: str, max_lines: int) -> str:
+    """Truncate a patch to max lines."""
     if not patch:
         return patch
     lines = patch.splitlines()
@@ -93,7 +109,8 @@ def _truncate_patch(patch: str, max_lines: int) -> str:
     return "\n".join(lines[:max_lines]) + "\n... [truncated]"
 
 
-def _strip_patches(files):
+def _strip_patches(files: list) -> list:
+    """Remove patch content from file list."""
     stripped = []
     for f in files:
         if not isinstance(f, dict):
@@ -105,9 +122,18 @@ def _strip_patches(files):
     return stripped
 
 
-def _post_incremental_comment(reviewer, kind: str, output: str, out_dir: str, batch_id: int, dry_run: bool):
+def _post_incremental_comment(
+    reviewer,
+    kind: str,
+    output: str,
+    out_dir: str,
+    batch_id: int,
+    dry_run: bool,
+):
+    """Post incremental review comment."""
     if not reviewer or not output:
         return
+    
     payload = {}
     if kind == "perf":
         payload["performance_findings"] = output
@@ -141,11 +167,22 @@ def _post_incremental_comment(reviewer, kind: str, output: str, out_dir: str, ba
         )
 
 
-def run_batch(batch, pr_context, agents, out_dir, perf_config, reviewer=None, incremental_comments=False, dry_run=False) -> Dict:
+def run_batch(
+    batch: dict,
+    pr_context: dict,
+    agents: dict,
+    out_dir: str,
+    perf_config: PerformanceConfig,
+    reviewer=None,
+    incremental_comments: bool = False,
+    dry_run: bool = False,
+) -> dict:
+    """Run review on a single batch."""
     batch_id = batch["batch_id"]
     file_index = {f["path"]: f for f in pr_context.get("files", [])}
     batch_files = [file_index.get(p, {"path": p}) for p in batch["files"]]
 
+    # Apply filters
     if perf_config.skip_test_files:
         batch_files = [f for f in batch_files if not _is_test_file(f.get("path", ""))]
 
@@ -174,19 +211,20 @@ def run_batch(batch, pr_context, agents, out_dir, perf_config, reviewer=None, in
     coverage_context = dict(batch_context)
     coverage_context["files"] = coverage_files
 
-    # Debug: print batch context summary
+    # Debug output
     print(f"\n{'='*60}")
     print(f"Batch {batch_id} Context:")
     print(f"  Files in batch: {len(batch_files)}")
-    for f in batch_files[:3]:  # Show first 3
-        patch_size = len(f.get('patch', ''))
+    for f in batch_files[:3]:
+        patch_size = len(f.get("patch", ""))
         print(f"    - {f.get('path')}: {f.get('loc', 0)} LOC, patch: {patch_size} chars")
     print(f"{'='*60}\n")
 
-    # Save batch context for debugging
+    # Save batch context
     batch_context_json = json.dumps(batch_context, indent=2)
     write_text(os.path.join(out_dir, f"batch_{batch_id}_context.json"), batch_context_json)
 
+    # Create tasks
     perf_review = perf_review_task(agents["perf_engineer"], batch_context_json)
     perf_fix = perf_fix_task(agents["implementer"], perf_review)
     security_review = security_review_task(agents["security_engineer"], batch_context_json)
@@ -197,7 +235,7 @@ def run_batch(batch, pr_context, agents, out_dir, perf_config, reviewer=None, in
 
     errors = []
 
-    # Run review tasks one-by-one so partial progress can be posted immediately.
+    # Run review tasks
     review_steps = [
         ("perf", perf_review, agents["perf_engineer"]),
         ("security", security_review, agents["security_engineer"]),
@@ -213,7 +251,7 @@ def run_batch(batch, pr_context, agents, out_dir, perf_config, reviewer=None, in
         except Exception as exc:
             errors.append(f"{kind}_review: {exc}")
 
-    # Run fix tasks only when the corresponding review has output.
+    # Run fix tasks
     if not perf_config.review_only and task_output(perf_review):
         try:
             Crew(agents=[agents["implementer"]], tasks=[perf_fix], process=Process.sequential).kickoff()
@@ -232,37 +270,17 @@ def run_batch(batch, pr_context, agents, out_dir, perf_config, reviewer=None, in
         except Exception as exc:
             errors.append(f"coverage_fix: {exc}")
 
-    write_text(
-        os.path.join(out_dir, f"perf_review_batch_{batch_id}.json"),
-        task_output(perf_review),
-    )
-    write_text(
-        os.path.join(out_dir, f"perf_fix_batch_{batch_id}.json"),
-        task_output(perf_fix),
-    )
-    write_text(
-        os.path.join(out_dir, f"security_review_batch_{batch_id}.json"),
-        task_output(security_review),
-    )
-    write_text(
-        os.path.join(out_dir, f"security_fix_batch_{batch_id}.json"),
-        task_output(senior_fix),
-    )
-    write_text(
-        os.path.join(out_dir, f"coverage_review_batch_{batch_id}.json"),
-        task_output(coverage_review),
-    )
-    write_text(
-        os.path.join(out_dir, f"coverage_fix_batch_{batch_id}.json"),
-        task_output(coverage_fix),
-    )
+    # Save outputs
+    write_text(os.path.join(out_dir, f"perf_review_batch_{batch_id}.json"), task_output(perf_review))
+    write_text(os.path.join(out_dir, f"perf_fix_batch_{batch_id}.json"), task_output(perf_fix))
+    write_text(os.path.join(out_dir, f"security_review_batch_{batch_id}.json"), task_output(security_review))
+    write_text(os.path.join(out_dir, f"security_fix_batch_{batch_id}.json"), task_output(senior_fix))
+    write_text(os.path.join(out_dir, f"coverage_review_batch_{batch_id}.json"), task_output(coverage_review))
+    write_text(os.path.join(out_dir, f"coverage_fix_batch_{batch_id}.json"), task_output(coverage_fix))
+    
     if errors:
-        write_text(
-            os.path.join(out_dir, f"batch_{batch_id}_errors.txt"),
-            "\n".join(errors),
-        )
+        write_text(os.path.join(out_dir, f"batch_{batch_id}_errors.txt"), "\n".join(errors))
 
-    # Return all results for potential PR creation
     return {
         "batch_id": batch_id,
         "performance_findings": task_output(perf_review),
@@ -277,82 +295,79 @@ def run_batch(batch, pr_context, agents, out_dir, perf_config, reviewer=None, in
 
 
 def main():
+    """Main entry point."""
     if len(sys.argv) < 2:
         print("Usage: python -m pr_workflow.main <path_to_pr_context.json|github_pr_url> [OPTIONS]")
         print("")
         print("Options:")
-        print("  --comment    : Post AI review as comments on the PR (recommended)")
+        print("  --comment    : Post AI review as comments on the PR")
         print("  --create-pr  : Create a new PR with AI-generated fixes")
+        print("  --dry-run    : Save review results without posting")
         print("  (no flag)    : Save review results to out/ directory only")
+        print("")
+        print("For a better experience, use the CLI: pr-review --help")
         sys.exit(1)
 
     load_dotenv()
     settings = load_settings()
-
-    # Apply performance optimizations for Ollama
-    from .performance_config import PerformanceConfig
     perf_config = PerformanceConfig.from_env()
     perf_config.apply_ollama_settings()
 
-    # Check workflow mode
+    # Parse flags
     comment_mode = "--comment" in sys.argv
     create_pr_flag = "--create-pr" in sys.argv
+    dry_run = "--dry-run" in sys.argv
 
     if comment_mode:
         sys.argv.remove("--comment")
     if create_pr_flag:
         sys.argv.remove("--create-pr")
+    if dry_run:
+        sys.argv.remove("--dry-run")
 
     input_arg = sys.argv[1]
+    
+    # Load PR context
     if input_arg.startswith("https://github.com/") and "/pull/" in input_arg:
         pr_context = build_pr_context_from_url(input_arg, settings.github_token or None)
     else:
         pr_context = read_json(input_arg)
 
-    # Debug: print PR context summary
+    # Debug output
     print(f"\n{'='*60}")
     print(f"PR Context Summary:")
     print(f"  ID: {pr_context.get('id')}")
     print(f"  Title: {pr_context.get('title')}")
     print(f"  Files: {len(pr_context.get('files', []))} file(s)")
-    if pr_context.get('files'):
-        for f in pr_context.get('files', [])[:5]:  # Show first 5 files
-            print(f"    - {f.get('path')}: {f.get('loc', 0)} LOC")
     print(f"{'='*60}\n")
 
     out_dir = settings.out_dir
     ensure_dir(out_dir)
-
-    # Save PR context for debugging
     write_text(os.path.join(out_dir, "pr_context.json"), json.dumps(pr_context, indent=2))
 
+    # Triage
     files = pr_context.get("files", [])
     triage = triage_batches(files, settings.max_loc_per_batch)
     write_text(os.path.join(out_dir, "triage.json"), json.dumps(triage, indent=2))
 
-    # Debug: print triage summary
-    print(f"\n{'='*60}")
-    print(f"Triage Summary:")
-    print(f"  Total LOC: {triage.get('total_loc')}")
-    print(f"  Max LOC per batch: {triage.get('max_loc_per_batch')}")
-    print(f"  Number of batches: {len(triage.get('batches', []))}")
-    for batch in triage.get('batches', []):
-        print(f"    Batch {batch.get('batch_id')}: {len(batch.get('files', []))} files, {batch.get('loc')} LOC")
-    print(f"{'='*60}\n")
+    print(f"Triage: {len(triage['batches'])} batch(es), {triage['total_loc']} total LOC")
+
     risk_report = build_risk_report(files)
     write_text(os.path.join(out_dir, "risk_report.json"), json.dumps(risk_report, indent=2))
 
+    # Build agents
     agents = build_agents(settings)
 
+    # Setup reviewer
     reviewer = None
-    if comment_mode and input_arg.startswith("https://github.com/"):
+    if (comment_mode or dry_run) and input_arg.startswith("https://github.com/"):
         from .github_reviewer import GitHubReviewer
-        if not settings.github_token:
-            print("⚠️  GITHUB_TOKEN is missing; cannot post PR comments.")
-        else:
+        if settings.github_token:
             reviewer = GitHubReviewer(input_arg, settings.github_token)
+        else:
+            print("⚠️ GITHUB_TOKEN is missing; cannot post PR comments.")
 
-    # Optional LLM validation of triage output
+    # Validate triage
     triage_validation = triage_task(agents["diff_triage"], json.dumps(triage))
     triage_crew = Crew(
         agents=[agents["diff_triage"]],
@@ -360,12 +375,9 @@ def main():
         process=Process.sequential,
     )
     triage_crew.kickoff()
-    write_text(
-        os.path.join(out_dir, "triage_validation.json"),
-        task_output(triage_validation),
-    )
+    write_text(os.path.join(out_dir, "triage_validation.json"), task_output(triage_validation))
 
-    # Collect all batch results
+    # Run batches
     all_results = []
     for batch in triage["batches"]:
         batch_result = run_batch(
@@ -376,10 +388,11 @@ def main():
             perf_config,
             reviewer=reviewer,
             incremental_comments=settings.incremental_comments,
-            dry_run=settings.dry_run_comments,
+            dry_run=dry_run,
         )
         all_results.append(batch_result)
 
+    # Run CI hooks
     if settings.test_cmd:
         test_output = run_command(settings.test_cmd)
         if test_output:
@@ -389,7 +402,7 @@ def main():
         if coverage_output:
             write_text(os.path.join(out_dir, "coverage_run.txt"), coverage_output)
 
-    # Aggregate results for GitHub operations
+    # Aggregate results
     aggregated_results = None
     if (comment_mode or create_pr_flag) and input_arg.startswith("https://github.com/"):
         aggregated_results = {
@@ -399,7 +412,7 @@ def main():
             "security_fixes": {},
             "solid_notes": {},
             "coverage_review": {},
-            "coverage_fixes": {}
+            "coverage_fixes": {},
         }
 
         for result in all_results:
@@ -407,22 +420,20 @@ def main():
                 if result.get(key):
                     try:
                         data = result[key] if isinstance(result[key], dict) else result[key]
-                        if key not in aggregated_results or not aggregated_results[key]:
+                        if not aggregated_results[key]:
                             aggregated_results[key] = data
-                        else:
-                            # Merge findings/changes
-                            if isinstance(data, dict):
-                                for k, v in data.items():
-                                    if isinstance(v, list):
-                                        aggregated_results[key].setdefault(k, []).extend(v)
+                        elif isinstance(data, dict):
+                            for k, v in data.items():
+                                if isinstance(v, list):
+                                    aggregated_results[key].setdefault(k, []).extend(v)
                     except (json.JSONDecodeError, TypeError):
                         pass
 
-    # Post review comments on PR if requested
-    if comment_mode and input_arg.startswith("https://github.com/") and settings.post_summary_comment:
-        print("\n" + "="*60)
+    # Post summary comment
+    if comment_mode and reviewer and settings.post_summary_comment and not dry_run:
+        print("\n" + "=" * 60)
         print("Posting AI Review Comments on PR...")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
         try:
             result = reviewer.post_review_comments(aggregated_results)
@@ -430,17 +441,17 @@ def main():
                 print(f"\n✅ Successfully posted review with {result['comments_posted']} comments\n")
                 write_text(os.path.join(out_dir, "review_posted.json"), json.dumps(result, indent=2))
             else:
-                print("\nℹ️  Review posted as a single comment (inline comments may have failed)\n")
+                print("\nℹ️ Review posted as a single comment\n")
         except Exception as e:
             print(f"\n❌ Failed to post review comments: {e}\n")
             import traceback
             traceback.print_exc()
 
-    # Create PR with fixes if requested
+    # Create fix PR
     if create_pr_flag and input_arg.startswith("https://github.com/"):
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Creating Pull Request with AI Review Fixes...")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
         from .github_pr_creator import GitHubPRCreator
 
@@ -451,11 +462,13 @@ def main():
                 print(f"\n✅ Successfully created PR: {pr_url}\n")
                 write_text(os.path.join(out_dir, "created_pr_url.txt"), pr_url)
             else:
-                print("\nℹ️  No changes to apply. PR not created.\n")
+                print("\nℹ️ No changes to apply. PR not created.\n")
         except Exception as e:
             print(f"\n❌ Failed to create PR: {e}\n")
             import traceback
             traceback.print_exc()
+
+    print("\n✅ Review complete. Results saved to:", out_dir)
 
 
 if __name__ == "__main__":

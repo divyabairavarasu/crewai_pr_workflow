@@ -1,16 +1,42 @@
 {
-  "id": "PR-123",
-  "title": "Optimize caching and add auth checks",
-  "description": "Sample PR context for testing the workflow.",
-  "diff_summary": "Updates cache layer and auth middleware. Adds tests.",
-  "test_summary": "Unit tests added for cache and auth flows.",
-  "ci_summary": "All checks passing.",
+  "id": 42,
+  "title": "Add user authentication module",
+  "description": "This PR adds a new authentication module with JWT support.\n\n## Changes\n- Added auth.py with login/logout endpoints\n- Added JWT token generation and validation\n- Added user session management\n- Added unit tests",
+  "diff_summary": "Added authentication module with JWT support",
+  "test_summary": "All tests passing",
+  "ci_summary": "CI passed",
   "files": [
-    {"path": "src/cache/lru_cache.py", "added": 180, "removed": 22},
-    {"path": "src/auth/middleware.py", "added": 90, "removed": 10},
-    {"path": "src/api/handlers.py", "added": 350, "removed": 120},
-    {"path": "tests/test_cache.py", "added": 140, "removed": 0},
-    {"path": "tests/test_auth.py", "added": 120, "removed": 0},
-    {"path": "README.md", "added": 30, "removed": 5}
+    {
+      "path": "src/auth/auth.py",
+      "added": 150,
+      "removed": 0,
+      "loc": 150,
+      "status": "added",
+      "patch": "@@ -0,0 +1,150 @@\n+import jwt\n+import hashlib\n+from datetime import datetime, timedelta\n+from typing import Optional\n+\n+SECRET_KEY = \"hardcoded-secret-key-123\"  # TODO: Move to env\n+\n+def hash_password(password: str) -> str:\n+    return hashlib.md5(password.encode()).hexdigest()\n+\n+def verify_password(password: str, hashed: str) -> bool:\n+    return hash_password(password) == hashed\n+\n+def create_token(user_id: int, expires_in: int = 3600) -> str:\n+    payload = {\n+        \"user_id\": user_id,\n+        \"exp\": datetime.utcnow() + timedelta(seconds=expires_in)\n+    }\n+    return jwt.encode(payload, SECRET_KEY, algorithm=\"HS256\")\n+\n+def verify_token(token: str) -> Optional[dict]:\n+    try:\n+        return jwt.decode(token, SECRET_KEY, algorithms=[\"HS256\"])\n+    except:\n+        return None\n+\n+def login(username: str, password: str) -> dict:\n+    # SQL query - potential injection\n+    query = f\"SELECT * FROM users WHERE username = '{username}'\"\n+    user = execute_query(query)\n+    if user and verify_password(password, user['password']):\n+        token = create_token(user['id'])\n+        return {\"token\": token, \"user\": user}\n+    return {\"error\": \"Invalid credentials\"}\n+"
+    },
+    {
+      "path": "src/auth/session.py",
+      "added": 80,
+      "removed": 0,
+      "loc": 80,
+      "status": "added",
+      "patch": "@@ -0,0 +1,80 @@\n+from typing import Dict, Optional\n+import time\n+\n+# In-memory session store (not production ready)\n+sessions: Dict[str, dict] = {}\n+\n+def create_session(user_id: int, data: dict) -> str:\n+    session_id = str(time.time())  # Weak session ID\n+    sessions[session_id] = {\n+        \"user_id\": user_id,\n+        \"data\": data,\n+        \"created_at\": time.time()\n+    }\n+    return session_id\n+\n+def get_session(session_id: str) -> Optional[dict]:\n+    return sessions.get(session_id)\n+\n+def delete_session(session_id: str) -> bool:\n+    if session_id in sessions:\n+        del sessions[session_id]\n+        return True\n+    return False\n+"
+    },
+    {
+      "path": "tests/test_auth.py",
+      "added": 45,
+      "removed": 0,
+      "loc": 45,
+      "status": "added",
+      "patch": "@@ -0,0 +1,45 @@\n+import pytest\n+from src.auth.auth import hash_password, verify_password, create_token\n+\n+def test_hash_password():\n+    hashed = hash_password(\"password123\")\n+    assert len(hashed) == 32\n+\n+def test_verify_password():\n+    hashed = hash_password(\"password123\")\n+    assert verify_password(\"password123\", hashed)\n+    assert not verify_password(\"wrong\", hashed)\n+\n+def test_create_token():\n+    token = create_token(1)\n+    assert token is not None\n+"
+    },
+    {
+      "path": "src/utils/helpers.py",
+      "added": 30,
+      "removed": 5,
+      "loc": 35,
+      "status": "modified",
+      "patch": "@@ -10,5 +10,30 @@\n def format_date(date):\n     return date.strftime(\"%Y-%m-%d\")\n \n+def process_items(items):\n+    result = []\n+    for item in items:\n+        for sub_item in item.get('children', []):\n+            for detail in sub_item.get('details', []):\n+                # O(n^3) complexity\n+                result.append(process_detail(detail))\n+    return result\n+\n+def find_duplicates(items):\n+    duplicates = []\n+    for i in range(len(items)):\n+        for j in range(len(items)):\n+            if i != j and items[i] == items[j]:\n+                duplicates.append(items[i])\n+    return duplicates\n+"
+    }
   ]
 }

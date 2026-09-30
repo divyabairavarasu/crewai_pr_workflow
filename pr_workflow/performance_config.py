@@ -1,7 +1,9 @@
 """
 Performance optimization settings for the PR workflow.
-Reduces Ollama CPU usage and speeds up reviews.
+Reduces CPU usage and speeds up reviews.
 """
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 
@@ -11,30 +13,30 @@ class PerformanceConfig:
     """Performance tuning settings."""
 
     # Ollama settings
-    ollama_num_threads: int = 4  # Limit CPU threads (default: use all cores)
-    ollama_num_gpu: int = 0  # GPU layers (0 = CPU only, increase if you have GPU)
-    ollama_batch_size: int = 128  # Smaller batch = less memory, slower
-    ollama_context_size: int = 2048  # Reduce from default 4096 for speed
+    ollama_num_threads: int = 4
+    ollama_num_gpu: int = 0
+    ollama_batch_size: int = 128
+    ollama_context_size: int = 2048
 
     # Workflow settings
-    enable_parallel_agents: bool = False  # Run agents sequentially to reduce load
-    max_patch_size: int = 500  # Limit patch size sent to models (lines)
-    skip_test_files: bool = True  # Don't review test files with expensive models
-    strip_patch_for_coverage: bool = True  # Coverage check doesn't need full patches
-    skip_doc_files: bool = True  # Skip docs and markdown files
+    enable_parallel_agents: bool = False
+    max_patch_size: int = 500
+    skip_test_files: bool = True
+    strip_patch_for_coverage: bool = True
+    skip_doc_files: bool = True
 
     # Model selection
-    use_deepseek_only: bool = False  # Use DeepSeek for everything (no Ollama)
-    use_haiku_for_simple: bool = False  # Use Claude Haiku for simple tasks
+    use_deepseek_only: bool = False
+    use_haiku_for_simple: bool = False
 
     # Caching
-    enable_review_cache: bool = True  # Cache similar file reviews
-    cache_ttl_seconds: int = 3600  # 1 hour
-    max_review_agents: int = 3  # Limit review agents for debugging (1=perf,2=perf+security,3=+coverage)
-    review_only: bool = False  # Skip fix tasks
+    enable_review_cache: bool = True
+    cache_ttl_seconds: int = 3600
+    max_review_agents: int = 3
+    review_only: bool = False
 
     @classmethod
-    def from_env(cls):
+    def from_env(cls) -> "PerformanceConfig":
         """Load performance config from environment variables."""
         return cls(
             ollama_num_threads=int(os.getenv("OLLAMA_NUM_THREADS", "4")),
@@ -59,8 +61,10 @@ class PerformanceConfig:
         os.environ["OLLAMA_NUM_GPU"] = str(self.ollama_num_gpu)
         os.environ["OLLAMA_CONTEXT_SIZE"] = str(self.ollama_context_size)
 
-        print(f"🔧 Ollama Performance Settings:")
-        print(f"   Threads: {self.ollama_num_threads} (lower = less CPU usage)")
-        print(f"   Context: {self.ollama_context_size} tokens (lower = faster)")
-        print(f"   GPU Layers: {self.ollama_num_gpu} (0 = CPU only)")
+        print(f"🔧 Performance Settings:")
+        print(f"   Ollama Threads: {self.ollama_num_threads}")
+        print(f"   Context Size: {self.ollama_context_size} tokens")
+        print(f"   Max Patch Size: {self.max_patch_size} lines")
+        print(f"   Review Agents: {self.max_review_agents}")
+        print(f"   Caching: {'enabled' if self.enable_review_cache else 'disabled'}")
         print()
